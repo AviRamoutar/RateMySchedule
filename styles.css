@@ -1,0 +1,126 @@
+.rmp-professor {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-decoration-color: #2196F3;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.rmp-professor:hover {
+    color: #2196F3;
+}
+
+.rmp-tooltip {
+    position: absolute;
+    z-index: 999999;
+    background: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    width: 320px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.rmp-content {
+    padding: 16px;
+}
+
+.professor-header {
+    margin-bottom: 16px;
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 12px;
+}
+
+.professor-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 4px;
+}
+
+.department {
+    font-size: 14px;
+    color: #666;
+}
+
+.ratings-row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.rating-box {
+    flex: 1;
+    text-align: center;
+    padding: 12px 8px;
+    border-radius: 8px;
+    color: white;
+}
+
+.rating-box.secondary {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.rating-number {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.rating-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    opacity: 0.9;
+}
+
+.total-ratings {
+    text-align: center;
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 12px;
+}
+
+.view-profile {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    background: #2196F3;
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.2s;
+}
+
+.view-profile:hover {
+    background: #1976D2;
+}
+
+.loading {
+    padding: 40px 20px;
+    text-align: center;
+    color: #666;
+    font-size: 14px;
+}
+
+.no-rating {
+    padding: 20px 0;
+    text-align: center;
+}
+
+.no-rating p {
+    margin: 0 0 8px 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.no-rating-help {
+    font-size: 12px;
+    color: #999;
+}

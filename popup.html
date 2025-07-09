@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            width: 350px;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+        }
+
+        h2 {
+            margin: 0 0 20px 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .toggle-label {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .toggle {
+            position: relative;
+            width: 52px;
+            height: 28px;
+            background: #ccc;
+            border-radius: 34px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .toggle.on {
+            background: #4CAF50;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 22px;
+            height: 22px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .toggle.on .toggle-slider {
+            transform: translateX(24px);
+        }
+
+        .school-section {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #555;
+            font-size: 14px;
+        }
+
+        .school-dropdown {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .school-dropdown:focus {
+            outline: none;
+            border-color: #4CAF50;
+        }
+
+        .info-text {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f7ff;
+            border-radius: 6px;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 14px;
+            display: none;
+        }
+
+        .status.show {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
+<body>
+<h2>RateMySchedule</h2>
+
+<div class="toggle-container">
+    <span class="toggle-label">Show Professor Ratings</span>
+    <div class="toggle" id="powerToggle">
+        <div class="toggle-slider"></div>
+    </div>
+</div>
+
+<div class="school-section">
+    <label for="schoolSelect">Select Your School:</label>
+    <select id="schoolSelect" class="school-dropdown">
+        <option value="">Loading schools...</option>
+    </select>
+</div>
+
+<div class="info-text">
+    💡 Hover over any professor name to see their RateMyProfessors rating, difficulty score, and student reviews!
+</div>
+
+<div class="status" id="saveStatus">Settings saved!</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
