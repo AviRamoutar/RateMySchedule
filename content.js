@@ -3,15 +3,6 @@ let schoolId = '';
 let schoolName = '';
 let professorCache = new Map();
 let currentTooltip = null;
-let searchSelectors = [
-    'td:nth-child(4)',
-    'td:nth-child(5)',
-    '[class*="instructor"]',
-    '[class*="prof"]',
-    '[class*="teacher"]',
-    'td',
-    'div'
-];
 
 chrome.storage.sync.get(['enabled', 'schoolId', 'schoolName'], (data) => {
     extensionEnabled = data.enabled || false;
@@ -41,6 +32,20 @@ function startExtension() {
     createTooltip();
     scanForProfessors();
     watchForChanges();
+
+    // Debug mode - press Alt+D to see what's detected
+    document.addEventListener('keydown', (e) => {
+        if (e.altKey && e.key === 'd') {
+            console.log('RateMySchedule Debug Info:');
+            console.log('Professors found:', document.querySelectorAll('.rmp-professor').length);
+            document.querySelectorAll('td').forEach((cell, index) => {
+                let text = cell.textContent.trim();
+                if (text.length > 5 && text.length < 50) {
+                    console.log(`Cell ${index}: "${text}" - Is professor name: ${isProfessorName(text)}`);
+                }
+            });
+        }
+    });
 }
 
 function stopExtension() {
@@ -53,8 +58,23 @@ function createTooltip() {
         currentTooltip = document.createElement('div');
         currentTooltip.className = 'rmp-tooltip';
         currentTooltip.style.display = 'none';
+
+        // Keep tooltip visible when hovering over it
+        currentTooltip.addEventListener('mouseenter', () => {
+            currentTooltip.setAttribute('data-hover', 'true');
+        });
+
+        currentTooltip.addEventListener('mouseleave', () => {
+            currentTooltip.removeAttribute('data-hover');
+            hideTooltip();
+        });
+
         document.body.appendChild(currentTooltip);
     }
+}
+
+function isMouseOverTooltip() {
+    return currentTooltip && currentTooltip.getAttribute('data-hover') === 'true';
 }
 
 function removeTooltip() {
@@ -65,42 +85,140 @@ function removeTooltip() {
 }
 
 function scanForProfessors() {
-    searchSelectors.forEach(selector => {
-        let elements = document.querySelectorAll(selector);
-        elements.forEach(element => {
-            let text = element.textContent.trim();
-            if (isProfessorName(text) && !element.hasAttribute('data-rmp-processed')) {
-                makeProfessorClickable(element, text);
+    // First, try to find instructor column by header
+    let headers = document.querySelectorAll('th, td');
+    let instructorColumnIndex = -1;
+
+    headers.forEach((header, index) => {
+        let text = header.textContent.trim().toLowerCase();
+        if (text === 'instructor' || text === 'professor' || text === 'teacher' || text === 'faculty') {
+            // Find which column this header is in
+            let parentRow = header.parentElement;
+            if (parentRow) {
+                let cells = Array.from(parentRow.children);
+                instructorColumnIndex = cells.indexOf(header) + 1;
             }
+        }
+    });
+
+    // If we found an instructor column, use it
+    if (instructorColumnIndex > 0) {
+        let instructorCells = document.querySelectorAll(`td:nth-child(${instructorColumnIndex})`);
+        instructorCells.forEach(cell => {
+            processCell(cell);
         });
+    }
+
+    // Also check common positions (4th and 5th columns)
+    let commonColumns = ['td:nth-child(4)', 'td:nth-child(5)', 'td:nth-child(6)'];
+    commonColumns.forEach(selector => {
+        let cells = document.querySelectorAll(selector);
+        cells.forEach(cell => {
+            processCell(cell);
+        });
+    });
+
+    // Check cells with professor-like content
+    let allCells = document.querySelectorAll('td');
+    allCells.forEach(cell => {
+        if (!cell.hasAttribute('data-rmp-processed')) {
+            let text = cell.textContent.trim();
+            // Check if this cell is likely to contain a professor name
+            if (isProfessorName(text)) {
+                // Additional check: is this in a data table?
+                let table = cell.closest('table');
+                if (table && !cell.querySelector('input, button, select')) {
+                    processCell(cell);
+                }
+            }
+        }
     });
 }
 
+function processCell(cell) {
+    if (cell.hasAttribute('data-rmp-processed')) return;
+
+    let text = cell.textContent.trim();
+
+    // Handle cells that might have multiple text nodes or links
+    let nameText = '';
+    if (cell.querySelector('a')) {
+        // If there's a link, use its text
+        nameText = cell.querySelector('a').textContent.trim();
+    } else {
+        // Otherwise use the cell's text
+        nameText = text;
+    }
+
+    if (isProfessorName(nameText)) {
+        makeProfessorClickable(cell, nameText);
+    }
+}
+
 function isProfessorName(text) {
-    if (!text || text.length < 5 || text.length > 50) return false;
+    if (!text || text.length < 3 || text.length > 50) return false;
+
+    // Clean up the text
+    text = text.trim();
 
     let words = text.split(/\s+/);
     if (words.length < 2 || words.length > 4) return false;
 
-    let hasLettersOnly = /^[A-Za-z\s\-'\.]+$/.test(text);
-    let hasNumbers = /\d/.test(text);
-    let commonNonNames = ['remote', 'online', 'staff', 'tba', 'tbd', 'cancelled', 'closed'];
-    let isCommonNonName = commonNonNames.some(word => text.toLowerCase().includes(word));
+    // Must contain only letters, spaces, hyphens, apostrophes, and periods
+    let hasValidChars = /^[A-Za-z\s\-'\.]+$/.test(text);
+    if (!hasValidChars) return false;
 
-    return hasLettersOnly && !hasNumbers && !isCommonNonName;
+    // Exclude common non-names
+    let excludePatterns = [
+        'remote', 'online', 'staff', 'tba', 'tbd', 'cancelled', 'closed',
+        'campus', 'building', 'room', 'hall', 'center', 'lecture', 'lab',
+        'discussion', 'seminar', 'workshop', 'north', 'south', 'east', 'west',
+        'main', 'pending', 'arranged', 'location', 'classroom', 'auditorium',
+        'section', 'component', 'seats', 'open', 'instructor', 'days'
+    ];
+
+    let textLower = text.toLowerCase();
+    let isExcluded = excludePatterns.some(pattern => {
+        return textLower === pattern || textLower.split(' ').includes(pattern);
+    });
+
+    if (isExcluded) return false;
+
+    // Check if it looks like a name (at least one capital letter)
+    let hasCapital = /[A-Z]/.test(text);
+
+    // Special case: if all words start with capital (typical for names)
+    let looksLikeName = words.every(word =>
+        word.length > 0 && /^[A-Z]/.test(word)
+    );
+
+    return hasCapital && (looksLikeName || words.length === 2);
 }
 
 function makeProfessorClickable(element, professorName) {
     element.setAttribute('data-rmp-processed', 'true');
     element.classList.add('rmp-professor');
-    element.style.cursor = 'pointer';
+
+    if (!element.style.cursor) {
+        element.style.cursor = 'pointer';
+    }
+
+    let hideTimeout;
 
     element.addEventListener('mouseenter', (e) => {
+        clearTimeout(hideTimeout);
+        e.stopPropagation();
         showProfessorRating(e, professorName);
     });
 
-    element.addEventListener('mouseleave', () => {
-        hideTooltip();
+    element.addEventListener('mouseleave', (e) => {
+        e.stopPropagation();
+        // Add delay before hiding to allow moving to tooltip
+        hideTimeout = setTimeout(() => {
+            if (!isMouseOverTooltip()) {
+                hideTooltip();
+            }
+        }, 300);
     });
 }
 
@@ -219,12 +337,17 @@ function getDifficultyColor(difficulty) {
 }
 
 function watchForChanges() {
-    let observer = new MutationObserver(() => {
-        scanForProfessors();
+    let observer = new MutationObserver((mutations) => {
+        // Debounce to avoid too many scans
+        clearTimeout(window.rmpScanTimeout);
+        window.rmpScanTimeout = setTimeout(() => {
+            scanForProfessors();
+        }, 500);
     });
 
     observer.observe(document.body, {
         childList: true,
-        subtree: true
+        subtree: true,
+        characterData: true
     });
 }
