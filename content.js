@@ -4,6 +4,7 @@ let schoolName = '';
 let professorCache = new Map();
 let currentTooltip = null;
 
+//Delay aswell as Hovering
 chrome.storage.sync.get(['enabled', 'schoolId', 'schoolName'], (data) => {
     extensionEnabled = data.enabled || false;
     schoolId = data.schoolId || '';
