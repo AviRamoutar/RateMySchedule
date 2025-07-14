@@ -1,16 +1,23 @@
+
 .rmp-professor {
     text-decoration: underline;
     text-decoration-style: dotted;
     text-decoration-color: #2196F3;
     text-underline-offset: 3px;
     cursor: pointer;
-    transition: color 0.2s;
+    transition: all 0.2s ease;
+    background-color: rgba(33, 150, 243, 0.05);
+    padding: 2px 4px;
+    border-radius: 3px;
 }
 
 .rmp-professor:hover {
     color: #2196F3;
+    background-color: rgba(33, 150, 243, 0.1);
+    text-decoration-color: #1976D2;
 }
 
+/* The tooltip that shows professor ratings */
 .rmp-tooltip {
     position: absolute;
     z-index: 999999;
@@ -21,6 +28,7 @@
     width: 320px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     pointer-events: auto;
+    max-width: calc(100vw - 20px);
 }
 
 .rmp-content {
@@ -45,6 +53,7 @@
     color: #666;
 }
 
+/* Rating boxes layout */
 .ratings-row {
     display: flex;
     gap: 12px;
@@ -59,6 +68,7 @@
     color: white;
 }
 
+/* Gray box for "would take again" percentage */
 .rating-box.secondary {
     background: #f0f0f0;
     color: #333;
@@ -85,6 +95,7 @@
     margin-bottom: 12px;
 }
 
+/* Link to full RMP profile */
 .view-profile {
     display: block;
     width: 100%;
@@ -97,12 +108,14 @@
     font-size: 14px;
     font-weight: 500;
     transition: background 0.2s;
+    box-sizing: border-box;
 }
 
 .view-profile:hover {
     background: #1976D2;
 }
 
+/* Loading state */
 .loading {
     padding: 40px 20px;
     text-align: center;
@@ -110,6 +123,7 @@
     font-size: 14px;
 }
 
+/* When no rating is found */
 .no-rating {
     padding: 20px 0;
     text-align: center;
@@ -121,8 +135,15 @@
     font-size: 14px;
 }
 
-
 .no-rating-help {
     font-size: 12px;
     color: #999;
+}
+
+/* mobile size */
+@media (max-width: 480px) {
+    .rmp-tooltip {
+        width: calc(100vw - 40px);
+        left: 20px !important;
+    }
 }

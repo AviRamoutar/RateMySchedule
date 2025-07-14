@@ -1,20 +1,23 @@
+// Main extension state - keeping track of settings and cached data
 let extensionEnabled = false;
 let schoolId = '';
 let schoolName = '';
 let professorCache = new Map();
 let currentTooltip = null;
 
-//Delay aswell as Hovering
+// Load user settings when the page loads
 chrome.storage.sync.get(['enabled', 'schoolId', 'schoolName'], (data) => {
     extensionEnabled = data.enabled || false;
     schoolId = data.schoolId || '';
     schoolName = data.schoolName || '';
 
+    // Only start if the user has enabled it and selected a school
     if (extensionEnabled && schoolId) {
         startExtension();
     }
 });
 
+// Listen for settings changes from the popup
 chrome.runtime.onMessage.addListener((request) => {
     if (request.type === 'settingsUpdated') {
         extensionEnabled = request.enabled;
@@ -34,15 +37,20 @@ function startExtension() {
     scanForProfessors();
     watchForChanges();
 
-    // Debug mode - press Alt+D to see what's detected
+    // Hidden debug feature - press Alt+D to see what the extension found
     document.addEventListener('keydown', (e) => {
         if (e.altKey && e.key === 'd') {
-            console.log('RateMySchedule Debug Info:');
-            console.log('Professors found:', document.querySelectorAll('.rmp-professor').length);
-            document.querySelectorAll('td').forEach((cell, index) => {
-                let text = cell.textContent.trim();
-                if (text.length > 5 && text.length < 50) {
-                    console.log(`Cell ${index}: "${text}" - Is professor name: ${isProfessorName(text)}`);
+            console.log('RateMySchedule Debug - What we found:');
+            console.log('Total professors detected:', document.querySelectorAll('.rmp-professor').length);
+
+            // Show all text we're analyzing
+            document.querySelectorAll('td, div, span, p, h1, h2, h3, h4, h5, h6').forEach((element, index) => {
+                let text = element.textContent.trim();
+                if (text.length > 2 && text.length < 60 && !element.querySelector('*')) {
+                    let isProfName = isProfessorName(text);
+                    if (isProfName || text.split(' ').length === 2) {
+                        console.log(`Text ${index}: "${text}" - Looks like professor: ${isProfName}`);
+                    }
                 }
             });
         }
@@ -60,7 +68,7 @@ function createTooltip() {
         currentTooltip.className = 'rmp-tooltip';
         currentTooltip.style.display = 'none';
 
-        // Keep tooltip visible when hovering over it
+        // Let users hover over the tooltip without it disappearing
         currentTooltip.addEventListener('mouseenter', () => {
             currentTooltip.setAttribute('data-hover', 'true');
         });
@@ -86,14 +94,15 @@ function removeTooltip() {
 }
 
 function scanForProfessors() {
-    // First, try to find instructor column by header
-    let headers = document.querySelectorAll('th, td');
+    // Strategy 1: Look for "Instructor" or "Professor" column headers
+    let headers = document.querySelectorAll('th, td[class*="header"], .header, [role="columnheader"]');
     let instructorColumnIndex = -1;
 
     headers.forEach((header, index) => {
         let text = header.textContent.trim().toLowerCase();
-        if (text === 'instructor' || text === 'professor' || text === 'teacher' || text === 'faculty') {
-            // Find which column this header is in
+        if (text.includes('instructor') || text.includes('professor') ||
+            text.includes('teacher') || text.includes('faculty') || text.includes('staff')) {
+            // Figure out which column this header represents
             let parentRow = header.parentElement;
             if (parentRow) {
                 let cells = Array.from(parentRow.children);
@@ -102,104 +111,142 @@ function scanForProfessors() {
         }
     });
 
-    // If we found an instructor column, use it
+    // If we found an instructor column, focus on that
     if (instructorColumnIndex > 0) {
-        let instructorCells = document.querySelectorAll(`td:nth-child(${instructorColumnIndex})`);
+        let instructorCells = document.querySelectorAll(`td:nth-child(${instructorColumnIndex}), td:nth-of-type(${instructorColumnIndex})`);
         instructorCells.forEach(cell => {
-            processCell(cell);
+            processElement(cell);
         });
     }
 
-    // Also check common positions (4th and 5th columns)
-    let commonColumns = ['td:nth-child(4)', 'td:nth-child(5)', 'td:nth-child(6)'];
-    commonColumns.forEach(selector => {
+    // Strategy 2: Check common table column positions where names usually appear
+    let commonColumnSelectors = [
+        'td:nth-child(3)', 'td:nth-child(4)', 'td:nth-child(5)', 'td:nth-child(6)',
+        'td:nth-of-type(3)', 'td:nth-of-type(4)', 'td:nth-of-type(5)', 'td:nth-of-type(6)'
+    ];
+
+    commonColumnSelectors.forEach(selector => {
         let cells = document.querySelectorAll(selector);
         cells.forEach(cell => {
-            processCell(cell);
+            processElement(cell);
         });
     });
 
-    // Check cells with professor-like content
-    let allCells = document.querySelectorAll('td');
-    allCells.forEach(cell => {
-        if (!cell.hasAttribute('data-rmp-processed')) {
-            let text = cell.textContent.trim();
-            // Check if this cell is likely to contain a professor name
-            if (isProfessorName(text)) {
-                // Additional check: is this in a data table?
-                let table = cell.closest('table');
-                if (table && !cell.querySelector('input, button, select')) {
-                    processCell(cell);
-                }
-            }
+    // Strategy 3: Look for elements that might contain professor names anywhere on the page
+    // This catches faculty directory pages, course listings, etc.
+    let potentialElements = document.querySelectorAll('td, div, span, p, h1, h2, h3, h4, h5, h6, a, li');
+    potentialElements.forEach(element => {
+        // Skip if we already processed this element
+        if (!element.hasAttribute('data-rmp-processed')) {
+            processElement(element);
         }
     });
 }
 
-function processCell(cell) {
-    if (cell.hasAttribute('data-rmp-processed')) return;
+function processElement(element) {
+    if (element.hasAttribute('data-rmp-processed')) return;
 
-    let text = cell.textContent.trim();
+    let text = element.textContent.trim();
 
-    // Handle cells that might have multiple text nodes or links
+    // Get the actual text we should check - prefer link text if there's a link
     let nameText = '';
-    if (cell.querySelector('a')) {
-        // If there's a link, use its text
-        nameText = cell.querySelector('a').textContent.trim();
+    let linkElement = element.querySelector('a');
+    if (linkElement) {
+        nameText = linkElement.textContent.trim();
     } else {
-        // Otherwise use the cell's text
         nameText = text;
     }
 
+    // Skip elements that contain other elements (unless it's just a simple link)
+    let hasComplexContent = element.children.length > 1 ||
+        (element.children.length === 1 && !linkElement);
+
+    if (hasComplexContent) return;
+
     if (isProfessorName(nameText)) {
-        makeProfessorClickable(cell, nameText);
+        makeProfessorClickable(element, nameText);
     }
 }
 
 function isProfessorName(text) {
-    if (!text || text.length < 3 || text.length > 50) return false;
+    if (!text || text.length < 2 || text.length > 80) return false;
 
-    // Clean up the text
+    // Clean up the text and handle common formatting
     text = text.trim();
 
-    let words = text.split(/\s+/);
-    if (words.length < 2 || words.length > 4) return false;
+    // Remove common titles and suffixes to get the core name
+    let cleanText = text
+        .replace(/^(Dr\.?|Prof\.?|Professor|Mr\.?|Ms\.?|Mrs\.?|Miss)\s+/i, '')
+        .replace(/,?\s+(Ph\.?D\.?|M\.?D\.?|Jr\.?|Sr\.?|III|II|IV)\s*$/i, '')
+        .trim();
+
+    let words = cleanText.split(/\s+/);
+
+    // Names should have 1-4 words (first, middle initial/name, last, suffix)
+    if (words.length < 1 || words.length > 4) return false;
 
     // Must contain only letters, spaces, hyphens, apostrophes, and periods
-    let hasValidChars = /^[A-Za-z\s\-'\.]+$/.test(text);
+    let hasValidChars = /^[A-Za-z\s\-'\.]+$/.test(cleanText);
     if (!hasValidChars) return false;
 
-    // Exclude common non-names
-    let excludePatterns = [
-        'remote', 'online', 'staff', 'tba', 'tbd', 'cancelled', 'closed',
-        'campus', 'building', 'room', 'hall', 'center', 'lecture', 'lab',
-        'discussion', 'seminar', 'workshop', 'north', 'south', 'east', 'west',
-        'main', 'pending', 'arranged', 'location', 'classroom', 'auditorium',
-        'section', 'component', 'seats', 'open', 'instructor', 'days'
+    // Exclude obvious non-names (common course/admin terms)
+    let excludeList = [
+        // Course terms
+        'lecture', 'lab', 'discussion', 'seminar', 'workshop', 'tutorial', 'recitation',
+        'online', 'remote', 'hybrid', 'synchronous', 'asynchronous',
+
+        // Admin terms
+        'staff', 'tba', 'tbd', 'pending', 'arranged', 'cancelled', 'closed', 'waitlist',
+
+        // Locations
+        'campus', 'building', 'room', 'hall', 'center', 'north', 'south', 'east', 'west',
+        'main', 'location', 'classroom', 'auditorium', 'library', 'gymnasium',
+
+        // Course components
+        'component', 'section', 'seats', 'credits', 'units', 'hours',
+        'open', 'full', 'available', 'enrollment', 'capacity',
+
+        // General terms
+        'instructor', 'professor', 'teacher', 'faculty', 'department', 'college',
+        'university', 'course', 'class', 'subject', 'program', 'degree',
+
+        // Days/Times
+        'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+        'morning', 'afternoon', 'evening', 'night'
     ];
 
-    let textLower = text.toLowerCase();
-    let isExcluded = excludePatterns.some(pattern => {
-        return textLower === pattern || textLower.split(' ').includes(pattern);
+    let textLower = cleanText.toLowerCase();
+    let isExcluded = excludeList.some(term => {
+        return textLower === term || textLower.includes(term);
     });
 
     if (isExcluded) return false;
 
-    // Check if it looks like a name (at least one capital letter)
-    let hasCapital = /[A-Z]/.test(text);
+    // Check if it has characteristics of a name
+    let hasCapitalLetter = /[A-Z]/.test(cleanText);
 
-    // Special case: if all words start with capital (typical for names)
-    let looksLikeName = words.every(word =>
-        word.length > 0 && /^[A-Z]/.test(word)
-    );
+    // For single words, be more restrictive - should look like a last name
+    if (words.length === 1) {
+        return hasCapitalLetter && cleanText.length >= 3 &&
+            /^[A-Z][a-z]+$/.test(cleanText) &&
+            !excludeList.includes(textLower);
+    }
 
-    return hasCapital && (looksLikeName || words.length === 2);
+    // For multiple words, check if they look like name parts
+    let looksLikeName = words.every(word => {
+        // Each word should start with capital or be a middle initial
+        return /^[A-Z]/.test(word) &&
+            (word.length === 1 || /^[A-Z][a-z]+$/.test(word) || word.match(/^[A-Z]\.$/));
+    });
+
+    return hasCapitalLetter && looksLikeName;
 }
 
 function makeProfessorClickable(element, professorName) {
     element.setAttribute('data-rmp-processed', 'true');
     element.classList.add('rmp-professor');
 
+    // Make it clear this is clickable
     if (!element.style.cursor) {
         element.style.cursor = 'pointer';
     }
@@ -214,7 +261,7 @@ function makeProfessorClickable(element, professorName) {
 
     element.addEventListener('mouseleave', (e) => {
         e.stopPropagation();
-        // Add delay before hiding to allow moving to tooltip
+        // Give users time to move their mouse to the tooltip
         hideTimeout = setTimeout(() => {
             if (!isMouseOverTooltip()) {
                 hideTooltip();
@@ -232,15 +279,40 @@ function removeAllHighlights() {
 }
 
 function showProfessorRating(event, professorName) {
-    let rect = event.target.getBoundingClientRect();
-    currentTooltip.style.left = rect.left + 'px';
-    currentTooltip.style.top = (rect.bottom + window.scrollY + 5) + 'px';
-    currentTooltip.style.display = 'block';
+    // Debug log
+    console.log('RateMySchedule: Showing rating for', professorName);
 
+    let rect = event.target.getBoundingClientRect();
+
+    // Smart tooltip positioning - avoid going off screen
+    let tooltipX = rect.left + window.scrollX;
+    let tooltipY = rect.bottom + window.scrollY + 8;
+
+    // Keep tooltip on screen horizontally
+    if (tooltipX + 320 > window.innerWidth + window.scrollX) {
+        tooltipX = window.innerWidth + window.scrollX - 330;
+    }
+    if (tooltipX < window.scrollX + 10) {
+        tooltipX = window.scrollX + 10;
+    }
+
+    // If tooltip would go below the fold, show it above the element instead
+    if (tooltipY + 200 > window.innerHeight + window.scrollY) {
+        tooltipY = rect.top + window.scrollY - 210;
+    }
+
+    currentTooltip.style.left = tooltipX + 'px';
+    currentTooltip.style.top = tooltipY + 'px';
+    currentTooltip.style.display = 'block';
+    currentTooltip.style.zIndex = '999999';
+
+    // Show cached data immediately, or fetch new data
     if (professorCache.has(professorName)) {
+        console.log('RateMySchedule: Using cached data for', professorName);
         displayRating(professorCache.get(professorName));
     } else {
-        currentTooltip.innerHTML = '<div class="loading">Searching for professor...</div>';
+        console.log('RateMySchedule: Fetching data for', professorName);
+        currentTooltip.innerHTML = '<div class="loading">Looking up professor ratings...</div>';
         fetchProfessorRating(professorName);
     }
 }
@@ -252,19 +324,51 @@ function hideTooltip() {
 }
 
 function fetchProfessorRating(professorName) {
+    console.log('RateMySchedule: Sending message to background script', {
+        professorName,
+        schoolId,
+        schoolName
+    });
+
     chrome.runtime.sendMessage({
         type: 'getProfessorRating',
         professorName: professorName,
         schoolId: schoolId,
         schoolName: schoolName
     }, (response) => {
+        console.log('RateMySchedule: Received response', response);
+
+        if (chrome.runtime.lastError) {
+            console.error('RateMySchedule: Chrome runtime error', chrome.runtime.lastError);
+            displayError(professorName, 'Extension error occurred');
+            return;
+        }
+
         if (response && response.success) {
             professorCache.set(professorName, response.data);
             displayRating(response.data);
         } else {
+            console.log('RateMySchedule: Professor not found or error', response?.error);
             displayNoRating(professorName);
         }
     });
+}
+
+function displayError(professorName, errorMessage) {
+    currentTooltip.innerHTML = `
+    <div class="rmp-content">
+      <div class="professor-name">${professorName}</div>
+      <div class="no-rating">
+        <p>Error loading ratings</p>
+        <p class="no-rating-help">${errorMessage}</p>
+      </div>
+      <a href="https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professorName)}" 
+         target="_blank" 
+         class="view-profile">
+        Search RateMyProfessors →
+      </a>
+    </div>
+  `;
 }
 
 function displayRating(data) {
@@ -275,7 +379,7 @@ function displayRating(data) {
     <div class="rmp-content">
       <div class="professor-header">
         <div class="professor-name">${data.firstName} ${data.lastName}</div>
-        <div class="department">${data.department || 'No department listed'}</div>
+        <div class="department">${data.department || 'Department not listed'}</div>
       </div>
       
       <div class="ratings-row">
@@ -295,7 +399,7 @@ function displayRating(data) {
         </div>
       </div>
       
-      <div class="total-ratings">${data.numRatings} student ratings</div>
+      <div class="total-ratings">Based on ${data.numRatings} student reviews</div>
       
       <a href="https://www.ratemyprofessors.com/professor/${data.legacyId}" 
          target="_blank" 
@@ -311,39 +415,42 @@ function displayNoRating(professorName) {
     <div class="rmp-content">
       <div class="professor-name">${professorName}</div>
       <div class="no-rating">
-        <p>No ratings found</p>
-        <p class="no-rating-help">This professor may not have ratings yet or may teach at a different school.</p>
+        <p>No ratings found for this professor</p>
+        <p class="no-rating-help">They might be new, teach at a different campus, or haven't been rated yet.</p>
       </div>
       <a href="https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professorName)}" 
          target="_blank" 
          class="view-profile">
-        Search on RMP →
+        Search RateMyProfessors →
       </a>
     </div>
   `;
 }
 
+// Color coding for ratings - green = good, red = bad
 function getRatingColor(rating) {
-    if (rating >= 4.0) return '#4CAF50';
-    if (rating >= 3.0) return '#FFC107';
-    if (rating >= 2.0) return '#FF9800';
-    return '#F44336';
+    if (rating >= 4.0) return '#4CAF50';      // Green - Excellent
+    if (rating >= 3.0) return '#FFC107';      // Yellow - Good
+    if (rating >= 2.0) return '#FF9800';      // Orange - Fair
+    return '#F44336';                         // Red - Poor
 }
 
+// Color coding for difficulty - green = easy, red = hard
 function getDifficultyColor(difficulty) {
-    if (difficulty <= 2.5) return '#4CAF50';
-    if (difficulty <= 3.5) return '#FFC107';
-    if (difficulty <= 4.0) return '#FF9800';
-    return '#F44336';
+    if (difficulty <= 2.5) return '#4CAF50';  // Green - Easy
+    if (difficulty <= 3.5) return '#FFC107';  // Yellow - Moderate
+    if (difficulty <= 4.0) return '#FF9800';  // Orange - Hard
+    return '#F44336';                         // Red - Very Hard
 }
 
 function watchForChanges() {
+    // Watch for page changes (helpful for single-page applications)
     let observer = new MutationObserver((mutations) => {
-        // Debounce to avoid too many scans
+        // Don't scan too frequently - wait for changes to settle
         clearTimeout(window.rmpScanTimeout);
         window.rmpScanTimeout = setTimeout(() => {
             scanForProfessors();
-        }, 500);
+        }, 1000);
     });
 
     observer.observe(document.body, {
